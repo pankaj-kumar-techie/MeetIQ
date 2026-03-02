@@ -37,13 +37,28 @@ async def transcribe_chunks(chunks_b64: list[str]) -> dict:
         all_text = []
         all_segments = []
         
-        # Calculate total duration for iteration (approx 10s per chunk)
-        num_windows = (len(chunks_b64) + 1) // 2
-        print(f"[TIMING] Sarvam FFmpeg Slicing: Extracting {num_windows} windows from {len(chunks_b64)} chunks...")
+        num_windows = 0
+        try:
+            # 🚀 Use ffprobe to get exact duration of the merged file
+            import subprocess
+            probe = subprocess.run([
+                "ffprobe", "-v", "error", "-show_entries", "format=duration", 
+                "-of", "default=noprint_wrappers=1:nokey=1", main_path
+            ], capture_output=True, text=True, check=True)
+            total_duration = float(probe.stdout.strip())
+            num_windows = int((total_duration + 19) // 20)
+            print(f"[TIMING] Sarvam FFmpeg: File duration is {total_duration}s. Slicing into {num_windows} windows.")
+        except Exception as probe_err:
+            print(f"[FFprobe Error] Falling back to chunk count estimation: {probe_err}")
+            num_windows = (len(chunks_b64) + 1) // 2
 
         try:
             for i in range(num_windows):
                 start_sec = i * 20
+                # Skip if start is past total duration (safety)
+                if 'total_duration' in locals() and start_sec >= total_duration:
+                    break
+
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f_wav:
                     window_path = f_wav.name
 
@@ -56,6 +71,11 @@ async def transcribe_chunks(chunks_b64: list[str]) -> dict:
                         "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
                         window_path
                     ], capture_output=True, check=True)
+
+                    # Final safety check: ensure the resulting file has actual data
+                    if os.path.getsize(window_path) < 1000: # Barely a header
+                        print(f"[TIMING] Skipping empty window {i+1}")
+                        continue
 
                     print(f"[TIMING] Transcribing window {i+1} (starts at {start_sec}s)...")
                     res = await _sarvam_transcribe(window_path)
