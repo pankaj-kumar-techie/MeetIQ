@@ -122,41 +122,26 @@ async def _finalize_bg(recording_id: str):
                 await db.commit()
                 return
 
-            # 1. Transcribe
+            # 1. Transcribe (VOICE TO TEXT ONLY)
             print(f"[MeetIQ finalize] Transcribing {len(chunks_b64)} chunks...")
             tx = await transcribe_chunks(chunks_b64)
             rec.transcript = tx.get("full_text", "")
             rec.segments   = tx.get("segments", [])
-            await db.commit()
-
-            # 2. Analyze
-            if rec.transcript:
-                print(f"[MeetIQ finalize] Analyzing transcript ({len(rec.transcript)} chars)...")
-                result_dict = await analyze_meeting(
-                    transcript=rec.transcript,
-                    agenda=rec.agenda,
-                    purpose=rec.purpose,
-                    meeting_type=rec.meeting_type,
-                )
-                rec.summary               = result_dict.get("summary", {})
-                rec.commitments           = result_dict.get("commitments", [])
-                rec.action_items          = result_dict.get("action_items", [])
-                rec.follow_up             = result_dict.get("follow_up", "")
-                if result_dict.get("detected_meeting_type"):
-                    rec.detected_meeting_type = result_dict["detected_meeting_type"]
-            else:
-                print(f"[MeetIQ finalize] Transcript is empty, skipping AI analysis")
-                rec.summary = {
-                    "overview":       "No speech detected in recording.",
-                    "key_points":     [],
-                    "decisions":      [],
-                    "open_questions": [],
-                    "sentiment":      "neutral",
-                    "meeting_type":   rec.meeting_type,
-                }
-
+            
+            # Set basic status as transcription done
             rec.status = "done"
             rec.ended_at = datetime.utcnow()
+            
+            # Only set initial empty summary so UI doesn't crash
+            if not rec.summary:
+                rec.summary = {
+                    "overview": "Transcript ready. Click 'Run AI Analysis' to generate summary.",
+                    "key_points": [],
+                    "decisions": [],
+                    "open_questions": [],
+                    "sentiment": "neutral",
+                    "meeting_type": rec.meeting_type
+                }
             
             # Use timezone-aware duration if possible
             try:
@@ -203,27 +188,51 @@ async def poll_status(recording_id: str, db: AsyncSession = Depends(get_db)):
     if not rec:
         raise HTTPException(404, "Not found")
 
-    # Get chunk count for debug
-    result = await db.execute(
-        select(func.count()).where(Chunk.recording_id == recording_id)
-    )
-    chunk_count = result.scalar() or 0
+    # Has the AI Brain been called?
+    has_brain_result = bool(rec.summary and rec.summary.get("overview") and 
+                           "Transcript ready" not in rec.summary.get("overview"))
 
-    base = {
+    return {
         "status":                rec.status,
-        "has_result":            rec.status == "done",
+        "has_transcript":        bool(rec.transcript),
+        "has_result":            has_brain_result,
         "meeting_type":          rec.meeting_type,
         "detected_meeting_type": rec.detected_meeting_type,
         "duration_ms":           rec.duration_ms,
-        "chunk_count":           chunk_count,
+        "segments":              rec.segments,
+        "transcript":            rec.transcript,
+        "summary":               rec.summary,
+        "commitments":           rec.commitments,
+        "action_items":          rec.action_items,
+        "follow_up":             rec.follow_up,
     }
 
-    if rec.status == "done":
-        base.update({
-            "summary":      rec.summary,
-            "commitments":  rec.commitments,    # ← Promises / Commitments fully returned
-            "action_items": rec.action_items,
-            "follow_up":    rec.follow_up,
-        })
+@router.post("/{recording_id}/analyze")
+async def manual_analyze(recording_id: str, db: AsyncSession = Depends(get_db)):
+    """Manually trigger AI Brain analysis on an existing transcript."""
+    rec = await db.get(Recording, recording_id)
+    if not rec: raise HTTPException(404, "Recording not found")
+    if not rec.transcript: raise HTTPException(400, "No transcript to analyze")
 
-    return base
+    print(f"[MeetIQ Manual Analysis] Starting for {recording_id}...")
+    
+    try:
+        result_dict = await analyze_meeting(
+            transcript=rec.transcript,
+            agenda=rec.agenda,
+            purpose=rec.purpose,
+            meeting_type=rec.meeting_type,
+        )
+        
+        rec.summary               = result_dict.get("summary", {})
+        rec.commitments           = result_dict.get("commitments", [])
+        rec.action_items          = result_dict.get("action_items", [])
+        rec.follow_up             = result_dict.get("follow_up", "")
+        if result_dict.get("detected_meeting_type"):
+            rec.detected_meeting_type = result_dict["detected_meeting_type"]
+            
+        await db.commit()
+        return {"ok": True, "result": result_dict}
+    except Exception as e:
+        print(f"[MeetIQ Manual Analysis] ERROR: {e}")
+        raise HTTPException(500, str(e))

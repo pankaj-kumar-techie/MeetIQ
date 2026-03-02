@@ -15,7 +15,8 @@ _model = genai.GenerativeModel(GEMINI_MODEL)
 
 async def transcribe_chunks(chunks_b64: list[str]) -> dict:
     """
-    Merge base64 WebM chunks into a single file, send to Gemini for transcription.
+    Merge base64 WebM chunks into a single file, send to a provider for transcription.
+    For Sarvam, we split into 20s windows to bypass their 30s duration limit.
     Returns: { full_text, segments: [{start, end, text, speaker}] }
     """
     import time
@@ -24,7 +25,43 @@ async def transcribe_chunks(chunks_b64: list[str]) -> dict:
     if not chunks_b64:
         return {"full_text": "", "segments": []}
 
-    print(f"[TIMING] Merging {len(chunks_b64)} chunks...")
+    if TRANSCRIPTION_PROVIDER.lower() == "sarvam":
+        # Strategy: Sarvam has a 30s limit. We group chunks (each ~10s) into windows of 2.
+        window_size = 2 
+        all_text = []
+        all_segments = []
+        
+        print(f"[TIMING] Sarvam Windowed STT: Processing {len(chunks_b64)} chunks in windows of {window_size}...")
+        
+        for i in range(0, len(chunks_b64), window_size):
+            window = chunks_b64[i : i + window_size]
+            window_raw = b"".join(base64.b64decode(c) for c in window)
+            
+            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
+                f.write(window_raw)
+                tmp_path = f.name
+            
+            try:
+                print(f"[TIMING] Transcribing window {i//window_size + 1}...")
+                res = await _sarvam_transcribe(tmp_path)
+                all_text.append(res["full_text"])
+                # Offset segments by the window start time (approx 10s per chunk)
+                offset = i * 10 
+                for seg in res["segments"]:
+                    seg["start"] += offset
+                    seg["end"] += offset
+                    all_segments.append(seg)
+            finally:
+                try: os.unlink(tmp_path)
+                except: pass
+        
+        return {
+            "full_text": " ".join(all_text),
+            "segments": all_segments
+        }
+
+    # Default logic (Gemini) - handles long files natively
+    print(f"[TIMING] Merging {len(chunks_b64)} chunks for {TRANSCRIPTION_PROVIDER}...")
     raw_bytes = b"".join(base64.b64decode(c) for c in chunks_b64)
 
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
@@ -34,24 +71,15 @@ async def transcribe_chunks(chunks_b64: list[str]) -> dict:
     try:
         start_stt = time.time()
         print(f"[TIMING] Starting transcription via {TRANSCRIPTION_PROVIDER}...")
-        
-        if TRANSCRIPTION_PROVIDER.lower() == "sarvam":
-            res = await _sarvam_transcribe(tmp_path)
-        else:
-            # Only use Gemini if explicitly selected
-            res = await _gemini_transcribe(tmp_path)
-            
+        res = await _gemini_transcribe(tmp_path)
         print(f"[TIMING] Transcription took {time.time() - start_stt:.2f}s")
         return res
     except Exception as e:
         print(f"[MeetIQ] Transcription ERROR via {TRANSCRIPTION_PROVIDER}: {e}")
-        # Report the error to the user instead of hitting another service's rate limit
         raise e
     finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
+        try: os.unlink(tmp_path)
+        except: pass
         print(f"[TIMING] Total finalize-transcribe phase: {time.time() - start_total:.2f}s")
 
 
@@ -160,7 +188,8 @@ async def _sarvam_transcribe(file_path: str) -> dict:
                  response = client.speech_to_text.transcribe(
                      file=f,
                      model=SARVAM_MODEL,
-                     mode="transcribe"
+                     mode="transcribe",
+                     with_timestamps=True  # 🚀 Added from newest docs
                  )
              return response
         except Exception as stt_err:
@@ -172,23 +201,47 @@ async def _sarvam_transcribe(file_path: str) -> dict:
 
     res = await loop.run_in_executor(None, _do_sarvam_transcribe)
 
-    # Handle both dict and object response from Sarvam
-    transcript = ""
-    if isinstance(res, dict):
-        transcript = res.get("transcript", "")
-    elif hasattr(res, "transcript"):
-        transcript = res.transcript
-    else:
-        # Fallback to string if unexpected
-        transcript = str(res)
+    # 🚀 Professional Parsing for Saaras v3 results
+    full_text = ""
+    segments = []
     
-    # MeetIQ expects segments, we'll provide a single segment if no others provided
-    return {
-        "full_text": transcript.strip(),
-        "segments": [{
+    # Extract transcript string safely
+    if isinstance(res, dict):
+        full_text = res.get("transcript", "")
+        # Extract word-level segments
+        ts_data = res.get("timestamps")
+        if ts_data and isinstance(ts_data, dict):
+            words = ts_data.get("words", [])
+            # Group words into logical segments (~12 words each) for cleaner Chat UI
+            for i in range(0, len(words), 12):
+                chunk = words[i : i + 12]
+                if chunk:
+                    txt = " ".join([w.get("word", "") for w in chunk])
+                    start = float(chunk[0].get("start_time_seconds") or 0)
+                    end = float(chunk[-1].get("end_time_seconds") or 0)
+                    segments.append({
+                        "start": start,
+                        "end": end,
+                        "text": txt,
+                        "speaker": "Speaker 1"
+                    })
+    elif hasattr(res, "transcript"):
+        full_text = res.transcript
+        # Try to handle object-style timestamps if any
+        if hasattr(res, "timestamps") and res.timestamps:
+            # same logic for objects...
+            pass
+
+    # Safety: fallback if no segments were parsed
+    if not segments:
+        segments = [{
             "start": 0.0,
-            "end": 0.0, # Approximate
-            "text": transcript.strip(),
+            "end": 0.0,
+            "text": full_text.strip(),
             "speaker": "Speaker 1"
         }]
+
+    return {
+        "full_text": full_text.strip(),
+        "segments": segments
     }

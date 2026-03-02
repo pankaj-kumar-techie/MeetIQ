@@ -3,6 +3,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(window.location.hash.replace('#', '?'));
     const meetingId = params.get('meeting-id');
+    window.MEETING_ID = meetingId; // Global for easy access
 
     if (!meetingId) {
         showEmptyState('No meeting selected.');
@@ -37,6 +38,20 @@ async function renderMeeting(m) {
     const date = new Date(m.savedAt || Date.now()).toLocaleDateString('en-US', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
+
+    const isAnalyzed = s.overview && !s.overview.includes('Transcript ready');
+    const navActions = document.getElementById('nav-actions');
+
+    if (!isAnalyzed) {
+        navActions.innerHTML = `
+            <button id="btn-analyze" class="btn-analyze" onclick="runAnalysis()">
+                <span class="icon">✨</span>
+                Run AI Brain
+            </button>
+        `;
+    } else {
+        navActions.innerHTML = `<span class="tag">✅ AI Analyzed</span>`;
+    }
 
     content.innerHTML = `
         <div class="header-section">
@@ -161,3 +176,54 @@ async function renderChatBubbles(segments) {
         `;
     }).join('');
 }
+
+// 🚀 Manual Analysis Trigger
+async function runAnalysis() {
+    const btn = document.getElementById('btn-analyze');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.innerHTML = `<span class="icon">⏳</span> Analyzing...`;
+
+    try {
+        const { settings = {} } = await chrome.storage.local.get('settings');
+        const baseUrl = settings.serverUrl || 'http://localhost:8000';
+
+        console.log(`[MeetIQ Dashboard] Triggering manual analysis for ${window.MEETING_ID}...`);
+        const res = await fetch(`${baseUrl}/api/recordings/${window.MEETING_ID}/analyze`, { method: 'POST' });
+        if (!res.ok) throw new Error('Analysis failed.');
+
+        const data = await res.json();
+        const result = data.result;
+
+        // 1. Update Storage
+        const { meetings = [] } = await chrome.storage.local.get('meetings');
+        const mIdx = meetings.findIndex(m => m.meetingId === window.MEETING_ID);
+        if (mIdx !== -1) {
+            meetings[mIdx].result.summary = result.summary;
+            meetings[mIdx].result.commitments = result.commitments;
+            meetings[mIdx].result.action_items = result.action_items;
+            meetings[mIdx].result.follow_up = result.follow_up;
+            meetings[mIdx].result.detected_meeting_type = result.detected_meeting_type;
+            await chrome.storage.local.set({ meetings });
+        }
+
+        // 2. Re-render UI
+        const meeting = meetings.find(m => m.meetingId === window.MEETING_ID);
+        await renderMeeting(meeting);
+
+    } catch (err) {
+        console.error('Manual Analysis error:', err);
+        btn.innerHTML = `<span class="icon">❌</span> Error`;
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerHTML = `<span class="icon">✨</span> Run AI Brain`;
+        }, 3000);
+    } finally {
+        btn.classList.remove('loading');
+    }
+}
+
+// Bind to window for HTML onclick
+window.runAnalysis = runAnalysis;

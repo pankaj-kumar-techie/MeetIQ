@@ -12,6 +12,14 @@ if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
     _gemini_model = genai.GenerativeModel(GEMINI_MODEL)
 
+# Sarvam AI Config (for Brain/Analysis)
+SARVAM_KEY = os.getenv("SARVAM_API_KEY", "")
+SARVAM_MODEL = os.getenv("SARVAM_MODEL", "sarvam-m")
+_sarvam_client = None
+if AI_PROVIDER == "sarvam" and SARVAM_KEY:
+    from sarvamai import SarvamAI
+    _sarvam_client = SarvamAI(api_subscription_key=SARVAM_KEY)
+
 # OpenAI / OpenRouter Config
 OPENAI_KEY = os.getenv("OPEN_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -38,13 +46,19 @@ else:
 # ── Low-level chat helper ────────────────────────────────────────────────────
 async def _chat(system: str, user: str, json_mode: bool = True) -> dict | str:
     # Token Optimization: Truncate very long transcripts to save tokens
-    # Approx 4 characters per token, 15k chars is ~3.7k tokens
     if len(user) > 15000:
         user = user[:15000] + "... [Transcript truncated to optimize tokens]"
 
-    if (AI_PROVIDER == "openai" or AI_PROVIDER == "openrouter") and _openai_client:
+    if AI_PROVIDER == "openrouter" and _openai_client:
         return await _chat_openai(system, user, json_mode)
-    return await _chat_gemini(system, user, json_mode)
+    elif AI_PROVIDER == "openai" and _openai_client:
+        return await _chat_openai(system, user, json_mode)
+    elif AI_PROVIDER == "sarvam" and _sarvam_client:
+        return await _chat_sarvam(system, user, json_mode)
+    elif AI_PROVIDER == "gemini":
+        return await _chat_gemini(system, user, json_mode)
+    else:
+        raise Exception(f"Invalid or unconfigured AI_PROVIDER: {AI_PROVIDER}")
 
 async def _chat_gemini(system: str, user: str, json_mode: bool = True) -> dict | str:
     prompt = f"{system}\n\n{user}"
@@ -56,7 +70,7 @@ async def _chat_gemini(system: str, user: str, json_mode: bool = True) -> dict |
                 prompt,
                 generation_config=genai.types.GenerationConfig(
                     temperature=0.1,
-                    max_output_tokens=1024 if json_mode else 1536,
+                    max_output_tokens=2048 if json_mode else 1536,
                     response_mime_type="application/json" if json_mode else "text/plain",
                 ),
             ),
@@ -66,12 +80,7 @@ async def _chat_gemini(system: str, user: str, json_mode: bool = True) -> dict |
         print(f"[Gemini Error] {e}")
         raise e
 
-    if json_mode:
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"): text = text[4:]
-        return json.loads(text.strip())
-    return text
+    return _parse_json(text) if json_mode else text
 
 async def _chat_openai(system: str, user: str, json_mode: bool = True) -> dict | str:
     try:
@@ -83,12 +92,63 @@ async def _chat_openai(system: str, user: str, json_mode: bool = True) -> dict |
             ],
             response_format={"type": "json_object"} if json_mode else None,
             temperature=0.1,
-            max_tokens=1024 if json_mode else 1536,
+            max_tokens=2048 if json_mode else 1536,
         )
         text = response.choices[0].message.content.strip()
-        return json.loads(text) if json_mode else text
+        return _parse_json(text) if json_mode else text
     except Exception as e:
         print(f"[OpenAI Error] {e}")
+        raise e
+
+async def _chat_sarvam(system: str, user: str, json_mode: bool = True) -> dict | str:
+    """Chat via Sarvam-M model (24B Multilingual)."""
+    try:
+        loop = asyncio.get_event_loop()
+        def _call_sarvam():
+            return _sarvam_client.chat.completions(
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user}
+                ],
+                model=SARVAM_MODEL,
+                temperature=0.2 if json_mode else 0.5,
+                max_tokens=2048 if json_mode else 1000,
+            )
+        
+        response = await loop.run_in_executor(None, _call_sarvam)
+        # Sarvam SDK response structure (OpenAI-like)
+        text = response.choices[0].message.content.strip()
+        return _parse_json(text) if json_mode else text
+    except Exception as e:
+        print(f"[Sarvam-M Error] {e}")
+        raise e
+
+def _parse_json(text: str) -> dict:
+    """Robustly parse JSON, stripping markdown fences and trailing garbage."""
+    # 1. Strip markdown fences
+    if "```" in text:
+        content = text.split("```")
+        for chunk in content:
+            # Look for chunks that look like JSON
+            chunk = chunk.strip()
+            if chunk.startswith("json"): chunk = chunk[4:].strip()
+            if chunk.startswith("{") and chunk.endswith("}"):
+                try: return json.loads(chunk)
+                except: continue
+    
+    # 2. Try raw text
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        # 3. Last ditch: try finding first { and last }
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1:
+            try:
+                return json.loads(text[start:end+1])
+            except: pass
+        print(f"[Parser Error] Failed to parse JSON. Raw: {text[:200]}...")
         raise e
 
 
