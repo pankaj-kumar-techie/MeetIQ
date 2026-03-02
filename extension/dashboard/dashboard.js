@@ -22,14 +22,14 @@ async function loadMeeting(id) {
             return;
         }
 
-        renderMeeting(meeting);
+        await renderMeeting(meeting);
     } catch (err) {
         console.error('Error loading meeting:', err);
         showEmptyState('Failed to load meeting data.');
     }
 }
 
-function renderMeeting(m) {
+async function renderMeeting(m) {
     const r = m.result;
     const s = r.summary || {};
     const content = document.getElementById('content');
@@ -59,15 +59,9 @@ function renderMeeting(m) {
                         ${(s.key_points || []).map(p => `<li style="margin-bottom: 8px;">• ${esc(p)}</li>`).join('')}
                     </ul>
 
-                    <h2>📋 Transcript Preview</h2>
-                    <div class="transcript">
-                        ${(r.segments || []).map(seg => `
-                            <div class="transcript-segment">
-                                <span class="speaker">${esc(seg.speaker)}</span>
-                                <span class="text">${esc(seg.text)}</span>
-                                <span class="timestamp">${formatTime(seg.start)}</span>
-                            </div>
-                        `).join('')}
+                    <h2>📋 Full Conversation</h2>
+                    <div class="transcript" id="transcript-container">
+                        ${await renderChatBubbles(r.segments || [])}
                     </div>
                 </div>
             </div>
@@ -123,4 +117,34 @@ function formatTime(sec) {
 function esc(s) {
     if (!s) return '';
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function renderChatBubbles(segments) {
+    if (!segments || segments.length === 0) {
+        return '<p style="color:var(--muted); text-align:center; padding:20px;">No transcript data available.</p>';
+    }
+
+    const { settings = {} } = await chrome.storage.local.get('settings');
+    const myName = (settings.speakerName || 'Me').toLowerCase();
+
+    return segments.map(seg => {
+        const speaker = seg.speaker || 'Unknown';
+        const isSelf = speaker.toLowerCase().includes(myName) ||
+            speaker.toLowerCase().includes('speaker 1') ||
+            speaker.toLowerCase().includes('me');
+
+        const side = isSelf ? 'self' : 'other';
+
+        return `
+            <div class="chat-msg ${side}">
+                <div class="msg-meta">
+                    <span class="speaker-name">${esc(speaker)}</span>
+                    <span class="msg-time">${formatTime(seg.start)}</span>
+                </div>
+                <div class="chat-bubble">
+                    ${esc(seg.text)}
+                </div>
+            </div>
+        `;
+    }).join('');
 }

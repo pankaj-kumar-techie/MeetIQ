@@ -28,8 +28,12 @@ async def transcribe_chunks(chunks_b64: list[str]) -> dict:
         tmp_path = f.name
 
     try:
-        if TRANSCRIPTION_PROVIDER == "sarvam":
-            return await _sarvam_transcribe(tmp_path)
+        if TRANSCRIPTION_PROVIDER.lower() == "sarvam":
+            try:
+                return await _sarvam_transcribe(tmp_path)
+            except Exception as e:
+                print(f"[MeetIQ] Sarvam failed, falling back to Gemini: {e}")
+                return await _gemini_transcribe(tmp_path)
         else:
             return await _gemini_transcribe(tmp_path)
     finally:
@@ -131,16 +135,28 @@ async def _sarvam_transcribe(file_path: str) -> dict:
 
     def _do_sarvam_transcribe():
         from sarvamai import SarvamAI
+        # Check if key is leaked/invalid
+        if not SARVAM_KEY or len(SARVAM_KEY) < 20:
+             raise Exception("Invalid SARVAM_API_KEY. Please update .env")
+             
         client = SarvamAI(api_subscription_key=SARVAM_KEY)
         
-        # Sarvam SDK returns response with "transcript"
-        with open(file_path, "rb") as f:
-            response = client.speech_to_text.transcribe(
-                file=f,
-                model=SARVAM_MODEL,
-                mode="transcribe"
-            )
-        return response
+        # sarvamai SDK uses 'speech_to_text' or similar. 
+        # According to logs, it raised BadRequestError.
+        try:
+             with open(file_path, "rb") as f:
+                 response = client.speech_to_text.transcribe(
+                     file=f,
+                     model=SARVAM_MODEL,
+                     mode="transcribe"
+                 )
+             return response
+        except Exception as stt_err:
+             print(f"[Sarvam STT Error] {stt_err}")
+             # Re-raise with more detail if possible
+             if hasattr(stt_err, "response") and hasattr(stt_err.response, "text"):
+                 print(f"[Sarvam Detail] {stt_err.response.text}")
+             raise stt_err
 
     res = await loop.run_in_executor(None, _do_sarvam_transcribe)
 

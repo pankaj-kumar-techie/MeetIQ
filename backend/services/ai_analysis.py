@@ -1,39 +1,95 @@
 import os, json, asyncio
 import google.generativeai as genai
+from openai import AsyncOpenAI
 
+# ── Configuration ────────────────────────────────────────────────────────────
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower() # "gemini", "openai", or "openrouter"
+
+# Gemini Config
 GEMINI_KEY   = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+    _gemini_model = genai.GenerativeModel(GEMINI_MODEL)
 
-# Configure the SDK once at import time
-genai.configure(api_key=GEMINI_KEY)
-_model = genai.GenerativeModel(GEMINI_MODEL)
+# OpenAI / OpenRouter Config
+OPENAI_KEY = os.getenv("OPEN_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "bytedance-seed/seed-2.0-mini")
+
+# Initialize client based on provider
+if AI_PROVIDER == "openrouter":
+    _openai_client = AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_KEY,
+        default_headers={
+            "HTTP-Referer": "https://meetiq.ai", # Optional
+            "X-OpenRouter-Title": "MeetIQ",
+        }
+    )
+    OPENAI_MODEL = OPENROUTER_MODEL # Override model for openrouter
+elif AI_PROVIDER == "openai":
+    _openai_client = AsyncOpenAI(api_key=OPENAI_KEY)
+else:
+    _openai_client = None
 
 # ── Low-level chat helper ────────────────────────────────────────────────────
 async def _chat(system: str, user: str, json_mode: bool = True) -> dict | str:
+    # Token Optimization: Truncate very long transcripts to save tokens
+    # Approx 4 characters per token, 15k chars is ~3.7k tokens
+    if len(user) > 15000:
+        user = user[:15000] + "... [Transcript truncated to optimize tokens]"
+
+    if (AI_PROVIDER == "openai" or AI_PROVIDER == "openrouter") and _openai_client:
+        return await _chat_openai(system, user, json_mode)
+    return await _chat_gemini(system, user, json_mode)
+
+async def _chat_gemini(system: str, user: str, json_mode: bool = True) -> dict | str:
     prompt = f"{system}\n\n{user}"
-
     loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(
-        None,
-        lambda: _model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.1,
-                max_output_tokens=1024 if json_mode else 1536,
-                response_mime_type="application/json" if json_mode else "text/plain",
+    try:
+        response = await loop.run_in_executor(
+            None,
+            lambda: _gemini_model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.1,
+                    max_output_tokens=1024 if json_mode else 1536,
+                    response_mime_type="application/json" if json_mode else "text/plain",
+                ),
             ),
-        ),
-    )
+        )
+        text = response.text.strip()
+    except Exception as e:
+        print(f"[Gemini Error] {e}")
+        raise e
 
-    text = response.text.strip()
     if json_mode:
-        # Strip markdown fences if present
         if text.startswith("```"):
             text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
+            if text.startswith("json"): text = text[4:]
         return json.loads(text.strip())
     return text
+
+async def _chat_openai(system: str, user: str, json_mode: bool = True) -> dict | str:
+    try:
+        response = await _openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user}
+            ],
+            response_format={"type": "json_object"} if json_mode else None,
+            temperature=0.1,
+            max_tokens=1024 if json_mode else 1536,
+        )
+        text = response.choices[0].message.content.strip()
+        return json.loads(text) if json_mode else text
+    except Exception as e:
+        print(f"[OpenAI Error] {e}")
+        raise e
 
 
 # ── High-level analysis entry point ─────────────────────────────────────────
