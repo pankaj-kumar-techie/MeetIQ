@@ -31,7 +31,11 @@ Chrome Extension (popup + offscreen recorder)
         ▼
 FastAPI Backend (Railway, free tier)
         │
-        ├── OpenAI Whisper API  → transcript + timestamps
+        ├── Transcription Provider:
+        │     ├── OpenAI Whisper API (Standard)
+        │     ├── Google Gemini 1.5 (Multimodal)
+        │     └── Sarvam AI Saaras v3 (Focus on Indian Languages)
+        │
         ├── GPT-4o-mini (×4 parallel chains)
         │     ├── Summary + sentiment
         │     ├── Commitment detector
@@ -67,8 +71,13 @@ Extension also fires directly:
 4. Railway will detect Python and deploy automatically
 5. Add environment variables in Railway dashboard → Variables:
    ```
-   OPENAI_API_KEY = sk-your-key-here
-   OPENAI_MODEL   = gpt-4o-mini
+   GEMINI_API_KEY = sk-your-key-here
+   GEMINI_MODEL   = gemini-1.5-flash
+   
+   # Or use Sarvam AI for better Indian language support:
+   TRANSCRIPTION_PROVIDER = sarvam
+   SARVAM_API_KEY = your-sarvam-key-here
+   SARVAM_RECOGNITION_MODEL = saaras:v3
    ```
 6. Click "+ New" → "Database" → "Add PostgreSQL"
    Railway sets `DATABASE_URL` automatically.

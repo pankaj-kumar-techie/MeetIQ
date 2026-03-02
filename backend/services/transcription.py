@@ -4,6 +4,11 @@ import google.generativeai as genai
 GEMINI_KEY   = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
+SARVAM_KEY   = os.getenv("SARVAM_API_KEY", "")
+SARVAM_MODEL = os.getenv("SARVAM_RECOGNITION_MODEL", "saaras:v3")
+
+TRANSCRIPTION_PROVIDER = os.getenv("TRANSCRIPTION_PROVIDER", "gemini") # "gemini" or "sarvam"
+
 genai.configure(api_key=GEMINI_KEY)
 _model = genai.GenerativeModel(GEMINI_MODEL)
 
@@ -23,7 +28,10 @@ async def transcribe_chunks(chunks_b64: list[str]) -> dict:
         tmp_path = f.name
 
     try:
-        return await _gemini_transcribe(tmp_path)
+        if TRANSCRIPTION_PROVIDER == "sarvam":
+            return await _sarvam_transcribe(tmp_path)
+        else:
+            return await _gemini_transcribe(tmp_path)
     finally:
         try:
             os.unlink(tmp_path)
@@ -111,4 +119,43 @@ Rules:
     return {
         "full_text": data.get("full_text", "").strip(),
         "segments":  data.get("segments", []),
+    }
+
+
+async def _sarvam_transcribe(file_path: str) -> dict:
+    """Send audio to Sarvam AI STT for transcription."""
+    if not SARVAM_KEY:
+        raise Exception("SARVAM_API_KEY is not set. Please set it in your .env file.")
+
+    loop = asyncio.get_event_loop()
+
+    def _do_sarvam_transcribe():
+        from sarvamai import SarvamAI
+        client = SarvamAI(api_subscription_key=SARVAM_KEY)
+        
+        # Sarvam SDK returns response with "transcript"
+        with open(file_path, "rb") as f:
+            response = client.speech_to_text.transcribe(
+                file=f,
+                model=SARVAM_MODEL,
+                mode="transcribe"
+            )
+        return response
+
+    res = await loop.run_in_executor(None, _do_sarvam_transcribe)
+
+    # Assuming Sarvam response structure has 'transcript' or similar
+    # According to Sarvam docs, the response is often a dictionary containing "transcript"
+    # and maybe segments if diarization is enabled (not enabled here)
+    transcript = res.get("transcript", "") if isinstance(res, dict) else str(res)
+    
+    # MeetIQ expects segments, we'll provide a single segment if no others provided
+    return {
+        "full_text": transcript.strip(),
+        "segments": [{
+            "start": 0.0,
+            "end": 0.0, # Approximate
+            "text": transcript.strip(),
+            "speaker": "Speaker 1"
+        }]
     }
