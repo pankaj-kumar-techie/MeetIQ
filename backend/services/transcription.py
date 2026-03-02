@@ -18,9 +18,13 @@ async def transcribe_chunks(chunks_b64: list[str]) -> dict:
     Merge base64 WebM chunks into a single file, send to Gemini for transcription.
     Returns: { full_text, segments: [{start, end, text, speaker}] }
     """
+    import time
+    start_total = time.time()
+    
     if not chunks_b64:
         return {"full_text": "", "segments": []}
 
+    print(f"[TIMING] Merging {len(chunks_b64)} chunks...")
     raw_bytes = b"".join(base64.b64decode(c) for c in chunks_b64)
 
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
@@ -28,19 +32,27 @@ async def transcribe_chunks(chunks_b64: list[str]) -> dict:
         tmp_path = f.name
 
     try:
+        start_stt = time.time()
+        print(f"[TIMING] Starting transcription via {TRANSCRIPTION_PROVIDER}...")
+        
         if TRANSCRIPTION_PROVIDER.lower() == "sarvam":
-            try:
-                return await _sarvam_transcribe(tmp_path)
-            except Exception as e:
-                print(f"[MeetIQ] Sarvam failed, falling back to Gemini: {e}")
-                return await _gemini_transcribe(tmp_path)
+            res = await _sarvam_transcribe(tmp_path)
         else:
-            return await _gemini_transcribe(tmp_path)
+            # Only use Gemini if explicitly selected
+            res = await _gemini_transcribe(tmp_path)
+            
+        print(f"[TIMING] Transcription took {time.time() - start_stt:.2f}s")
+        return res
+    except Exception as e:
+        print(f"[MeetIQ] Transcription ERROR via {TRANSCRIPTION_PROVIDER}: {e}")
+        # Report the error to the user instead of hitting another service's rate limit
+        raise e
     finally:
         try:
             os.unlink(tmp_path)
         except Exception:
             pass
+        print(f"[TIMING] Total finalize-transcribe phase: {time.time() - start_total:.2f}s")
 
 
 async def _gemini_transcribe(file_path: str) -> dict:

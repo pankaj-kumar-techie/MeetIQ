@@ -99,6 +99,8 @@ async def analyze_meeting(
     purpose: str = "",
     meeting_type: str = "discovery",
 ) -> dict:
+    import time
+    start_time = time.time()
     """Consolidated single-pass analysis to save ~75% on input tokens."""
     
     # Simple truncation for safety
@@ -132,8 +134,10 @@ Analyze the transcript and return a single JSON object with these exact keys:
 
     try:
         # One call instead of four!
+        print(f"[TIMING] Starting AI Analysis via {AI_PROVIDER}...")
         result = await _chat(system_prompt, user_context, json_mode=True)
         
+        print(f"[TIMING] AI Analysis complete. Took {time.time() - start_time:.2f}s")
         return {
             "summary": result.get("summary", {}),
             "commitments": result.get("commitments", []),
