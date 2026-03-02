@@ -99,45 +99,57 @@ async def analyze_meeting(
     purpose: str = "",
     meeting_type: str = "discovery",
 ) -> dict:
-    """Run all 4 analyses in parallel. Returns combined dict."""
-    context = (
-        f"Meeting purpose: {purpose}\n"
-        f"Meeting agenda: {agenda}\n"
-        f"Meeting type: {meeting_type}\n\n"
+    """Consolidated single-pass analysis to save ~75% on input tokens."""
+    
+    # Simple truncation for safety
+    if len(transcript) > 15000:
+        transcript = transcript[:15000] + "... [truncated]"
+
+    system_prompt = """You are a highly efficient meeting intelligence engine. 
+Analyze the transcript and return a single JSON object with these exact keys:
+{
+  "summary": {
+    "overview": "2-sentence summary",
+    "key_points": ["4-6 points"],
+    "decisions": ["decisions made"],
+    "open_questions": ["unresolved items"],
+    "sentiment": "positive|neutral|concerned|negative",
+    "meeting_type": "sales|discovery|internal|etc"
+  },
+  "commitments": [
+    {"text": "sentence", "speaker": "who", "type": "promise", "risk_level": "low|med|high"}
+  ],
+  "action_items": [
+    {"task": "description", "owner": "name", "deadline": "date", "priority": "high|low"}
+  ],
+  "follow_up_email": "A professional plain-text email ready to send."
+}"""
+
+    user_context = (
+        f"Context:\nPurpose: {purpose}\nAgenda: {agenda}\nType: {meeting_type}\n\n"
         f"Transcript:\n{transcript}"
     )
 
-    results = await asyncio.gather(
-        _summarize(context),
-        _detect_commitments(transcript),
-        _extract_actions(transcript),
-        _gen_followup(transcript, purpose),
-        return_exceptions=True,
-    )
-
-    def safe(r, fallback):
-        if isinstance(r, Exception):
-            print(f"[Gemini analysis error] {type(r).__name__}: {r}")
-            return fallback
-        return r
-
-    summary_fallback = {
-        "overview": "Analysis unavailable.",
-        "key_points": [],
-        "decisions": [],
-        "open_questions": [],
-        "sentiment": "neutral",
-        "meeting_type": meeting_type,
-    }
-
-    summary = safe(results[0], summary_fallback)
-    return {
-        "summary":               summary,
-        "commitments":           safe(results[1], []),
-        "action_items":          safe(results[2], []),
-        "follow_up":             safe(results[3], ""),
-        "detected_meeting_type": summary.get("meeting_type") if isinstance(summary, dict) else None,
-    }
+    try:
+        # One call instead of four!
+        result = await _chat(system_prompt, user_context, json_mode=True)
+        
+        return {
+            "summary": result.get("summary", {}),
+            "commitments": result.get("commitments", []),
+            "action_items": result.get("action_items", []),
+            "follow_up": result.get("follow_up_email", ""),
+            "detected_meeting_type": result.get("summary", {}).get("meeting_type"),
+        }
+    except Exception as e:
+        print(f"[MeetIQ Analysis Error] {e}")
+        return {
+            "summary": {"overview": "Analysis failed.", "key_points": []},
+            "commitments": [],
+            "action_items": [],
+            "follow_up": "",
+            "detected_meeting_type": None
+        }
 
 
 # ── Individual analysis passes ───────────────────────────────────────────────

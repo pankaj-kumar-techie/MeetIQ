@@ -95,6 +95,14 @@ async function renderMeeting(m) {
             </div>
         </div>
     `;
+
+    // 🚀 Auto-scroll to the bottom of the chat
+    setTimeout(() => {
+        const transcript = document.getElementById('transcript-container');
+        if (transcript) {
+            transcript.scrollTop = transcript.scrollHeight;
+        }
+    }, 150);
 }
 
 function showEmptyState(msg) {
@@ -129,6 +137,8 @@ async function renderChatBubbles(segments) {
 
     return segments.map(seg => {
         const speaker = seg.speaker || 'Unknown';
+        const initials = speaker.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
         const isSelf = speaker.toLowerCase().includes(myName) ||
             speaker.toLowerCase().includes('speaker 1') ||
             speaker.toLowerCase().includes('me');
@@ -137,12 +147,15 @@ async function renderChatBubbles(segments) {
 
         return `
             <div class="chat-msg ${side}">
-                <div class="msg-meta">
-                    <span class="speaker-name">${esc(speaker)}</span>
-                    <span class="msg-time">${formatTime(seg.start)}</span>
-                </div>
-                <div class="chat-bubble">
-                    ${esc(seg.text)}
+                <div class="avatar">${esc(initials)}</div>
+                <div class="msg-container">
+                    <div class="msg-meta">
+                        <span class="speaker-name">${esc(speaker)}</span>
+                        <span class="msg-time">${formatTime(seg.start)}</span>
+                    </div>
+                    <div class="chat-bubble">
+                        ${esc(seg.text)}
+                    </div>
                 </div>
             </div>
         `;
