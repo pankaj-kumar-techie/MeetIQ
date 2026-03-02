@@ -18,8 +18,8 @@ async def _chat(system: str, user: str, json_mode: bool = True) -> dict | str:
         lambda: _model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
-                temperature=0.15,
-                max_output_tokens=2048,
+                temperature=0.1,
+                max_output_tokens=1024 if json_mode else 1536,
                 response_mime_type="application/json" if json_mode else "text/plain",
             ),
         ),

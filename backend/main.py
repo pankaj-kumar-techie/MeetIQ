@@ -7,6 +7,14 @@ from routers import recordings, meetings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # Cleanup recordings stuck in "processing" state (orphaned by previous server exit)
+    from core.database import AsyncSessionLocal
+    from models.recording import Recording
+    from sqlalchemy import update
+    async with AsyncSessionLocal() as db:
+        await db.execute(update(Recording).where(Recording.status == "processing").values(status="error"))
+        await db.commit()
+        print("[MeetIQ] Startup cleanup: reset 'processing' recordings.")
     yield
 
 app = FastAPI(title="MeetIQ API", version="1.0.0", lifespan=lifespan)

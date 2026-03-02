@@ -12,14 +12,27 @@ DATABASE_URL = os.getenv(
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 
-# SQLite needs check_same_thread=False; Postgres needs none
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False, "timeout": 30}
+else:
+    connect_args = {}
+
+from sqlalchemy import event
 
 engine = create_async_engine(
     DATABASE_URL,
     connect_args=connect_args,
     echo=False,
 )
+
+# SQLite: Enable WAL mode for better concurrency (prevents most deadlocks/locks)
+@event.listens_for(engine.sync_engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    if DATABASE_URL.startswith("sqlite"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

@@ -144,10 +144,15 @@ async def _sarvam_transcribe(file_path: str) -> dict:
 
     res = await loop.run_in_executor(None, _do_sarvam_transcribe)
 
-    # Assuming Sarvam response structure has 'transcript' or similar
-    # According to Sarvam docs, the response is often a dictionary containing "transcript"
-    # and maybe segments if diarization is enabled (not enabled here)
-    transcript = res.get("transcript", "") if isinstance(res, dict) else str(res)
+    # Handle both dict and object response from Sarvam
+    transcript = ""
+    if isinstance(res, dict):
+        transcript = res.get("transcript", "")
+    elif hasattr(res, "transcript"):
+        transcript = res.transcript
+    else:
+        # Fallback to string if unexpected
+        transcript = str(res)
     
     # MeetIQ expects segments, we'll provide a single segment if no others provided
     return {

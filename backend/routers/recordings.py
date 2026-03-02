@@ -106,6 +106,7 @@ async def _finalize_bg(recording_id: str):
             if not chunks_b64:
                 print(f"[MeetIQ finalize] No audio chunks found for {recording_id}. Finishing fast.")
                 rec.status = "done"
+                rec.ended_at = datetime.utcnow()
                 rec.summary = {
                     "overview": "No audio recorded.",
                     "key_points": [],
@@ -114,6 +115,10 @@ async def _finalize_bg(recording_id: str):
                     "sentiment": "neutral",
                     "meeting_type": rec.meeting_type
                 }
+                # Calc duration even for empty
+                if rec.started_at:
+                    delta = datetime.now(rec.started_at.tzinfo) - rec.started_at
+                    rec.duration_ms = int(delta.total_seconds() * 1000)
                 await db.commit()
                 return
 
@@ -151,12 +156,25 @@ async def _finalize_bg(recording_id: str):
                 }
 
             rec.status = "done"
-            if rec.started_at and rec.ended_at:
-                delta = rec.ended_at - rec.started_at.replace(tzinfo=None)
-                rec.duration_ms = int(delta.total_seconds() * 1000)
+            rec.ended_at = datetime.utcnow()
+            
+            # Use timezone-aware duration if possible
+            try:
+                if rec.started_at:
+                    from datetime import timezone
+                    # Safely convert to naive UTC or keep both aware
+                    # SQLAlchemy/SQLite often return a naive datetime that represents UTC.
+                    # func.now() + timezone column can be tricky.
+                    s = rec.started_at.replace(tzinfo=None)
+                    e = rec.ended_at.replace(tzinfo=None)
+                    delta = e - s
+                    rec.duration_ms = int(delta.total_seconds() * 1000)
+            except Exception as dt_err:
+                print(f"[MeetIQ] Duration calculation warn: {dt_err}")
+                rec.duration_ms = 0
 
             await db.commit()
-            print(f"[MeetIQ finalize] Success for {recording_id}")
+            print(f"[MeetIQ finalize] Success for {recording_id} (duration: {rec.duration_ms}ms)")
 
         except Exception as e:
             import traceback

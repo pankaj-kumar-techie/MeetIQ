@@ -7,12 +7,18 @@ const store = new MeetingStore()
 async function initialize() {
   await store.ensureLoaded();
   const meeting = store.getActiveMeeting();
-  if (meeting && meeting.status === 'processing') {
-    console.log('[sw] Resuming analysis for meeting:', meeting.id);
-    handleRecordingComplete({ type: 'RESUME_POLLING' }).catch(console.error);
+  if (meeting) {
+    if (meeting.status === 'processing') {
+      console.log('[sw] Resuming analysis for meeting:', meeting.id);
+      handleRecordingComplete({ type: 'RESUME_POLLING' }).catch(console.error);
+    } else if (meeting.status === 'recording') {
+      console.warn('[sw] Interrupted recording found on restart.');
+      await store.updateActiveMeeting({ status: 'error' });
+    }
   }
 }
-initialize();
+async function runInit() { await initialize(); }
+runInit();
 
 // ─── Message Router ────────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
@@ -214,19 +220,22 @@ async function pollUntilDone(recordingId, base, maxWait = 300_000) {
       failCount = 0; // Reset on success
 
       if (data.status === 'done') return data;
-      if (data.status === 'error') throw new Error('Analysis failed on server');
+      if (data.status === 'error') throw new Error('Analysis failed on server. Status marked as error.');
     } catch (err) {
       failCount++;
       console.warn(`[sw] Poll attempt failed (${failCount}):`, err.message);
 
-      // If we fail 5 times in a row, the server is truly down
-      if (failCount > 5) throw err;
+      // Immediately stop on server-side explicit error or 404
+      if (err.message.includes('error') || err.message.includes('lost')) throw err;
 
-      // Wait extra if failing
-      await new Promise(r => setTimeout(r, 2000 * failCount));
+      // If we fail 3 times in a row for network reasons, stop
+      if (failCount > 3) throw err;
+
+      // exponential backoff
+      await new Promise(r => setTimeout(r, 3000 * failCount));
     }
   }
-  throw new Error('Analysis timed out');
+  throw new Error('Analysis timed out after 5 minutes');
 }
 
 // ─── Handle incoming audio chunk (streamed every 10s) ─────────────────────────
