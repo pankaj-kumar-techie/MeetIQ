@@ -1,133 +1,97 @@
-# MeetIQ — Developer Setup Guide
+# 🛠️ MeetIQ — Technical Developer Guide
 
-## Prerequisites
-
-| Tool | Version |
-|------|---------|
-| Docker Desktop | ≥ 4.x |
-| Google Chrome | ≥ 114 |
-| A Gemini API key | Free tier (aistudio.google.com) |
+Welcome to the MeetIQ development environment. This guide covers the end-to-end setup for the browser extension and the Docker-based FastAPI intelligence engine.
 
 ---
 
-## Step 1 — Configure the Backend
-
-```bash
-cd d:\workspace\MeetIQ\backend
-```
-
-Open `.env` and set your Gemini key:
-
-```env
-GEMINI_API_KEY=your-real-key-from-ai-studio
-GEMINI_MODEL=gemini-1.5-flash
-```
-
-> **Note:** For local dev the database defaults to SQLite (`meetiq.db` inside a Docker volume). No database setup needed.
+## 📋 System Prerequisites
+| Requirement | Detail |
+| :--- | :--- |
+| **OS** | Windows (PowerShell/WSL2), macOS, or Linux |
+| **Runtime** | Docker Desktop & Docker Compose (V2+) |
+| **Browser** | Google Chrome (Standard or Canary) for MV3 support |
+| **API Keys** | Sarvam AI (STT/Brain), OpenRouter, or Gemini |
 
 ---
 
-## Step 2 — Start the Backend with Docker
+## 🏗️ Step 1: Intelligence Engine (Backend)
 
-```bash
-# From d:\workspace\MeetIQ\backend
-docker compose up --build
+The backend is a high-performance **FastAPI** application served via **Uvicorn** and orchestrated with **Docker**.
+
+### Configuration
+Go to the `backend` directory and configure your environment:
+```powershell
+cp .env.example .env
+```
+Key variables to set:
+- `AI_PROVIDER`: `sarvam`, `openrouter`, or `gemini`.
+- `SARVAM_API_KEY`: Required for high-accuracy Indian language STT.
+
+### Launching with Docker
+```powershell
+docker-compose up -d --build
 ```
 
-Expected output (first run ~60s):
-```
-meetiq-api  | INFO:     Application startup complete.
-meetiq-api  | INFO:     Uvicorn running on http://0.0.0.0:8000
-```
-
-Verify it's running:
-```bash
+**Diagnostic Check:**
+```powershell
+# Check health
 curl http://localhost:8000/health
-# {"status":"ok"}
-```
-
-To stop: `docker compose down`
-
----
-
-## Step 3 — Load the Extension in Chrome Developer Mode
-
-1. Open Chrome and navigate to: `chrome://extensions`
-2. Toggle **Developer mode** ON (top-right switch)
-3. Click **"Load unpacked"**
-4. Select the folder: `d:\workspace\MeetIQ\extension`
-5. The **MeetIQ** extension icon will appear in your toolbar
-
-> **Tip:** Pin it to the toolbar by clicking the puzzle-piece icon → pin MeetIQ.
-
----
-
-## Step 4 — Configure the Extension
-
-1. Click the MeetIQ icon in the toolbar
-2. Go to **⚙ Settings** tab
-3. Set **API Endpoint** to: `http://localhost:8000`
-4. Optionally add Discord/Slack webhook URLs
-5. Click **Save Settings**
-
----
-
-## Step 5 — Test Auto Meeting Type Detection
-
-1. Navigate to **https://meet.google.com** (you don't need to join a call)
-2. Click the MeetIQ icon
-3. After ~2 seconds a chip should auto-select (e.g. "Discovery") with an **"✦ Auto-detected"** badge
-4. You can manually override by clicking any other chip
-
----
-
-## Step 6 — Test a Recording
-
-1. Join or start a real Google Meet, Teams, or Whereby call
-2. Click MeetIQ → fill in meeting name → click **Start Recording**
-3. Speak for 30+ seconds ("I will send the proposal by Friday, fixed at $5000")
-4. Click **Stop Recording**
-5. The status bar shows "Analyzing meeting…"
-6. Once done, go to **Meetings** tab — you'll see:
-   - Meeting type (auto-detected by AI)
-   - ⚠️ Commitment count badge (Promises/Commitments)
-   - ✅ Action item count
-
----
-
-## Architecture Overview
-
-```
-Chrome Extension                     Docker Backend (port 8000)
-─────────────────                    ──────────────────────────
-content/detector.js  ──MEETING_TYPE_HINT──►  (stored in session)
-popup/popup.js       ──START_RECORDING──►  /api/recordings/start
-background/sw.js     ──tabCapture───►     offscreen/recorder.js
-                     ──AUDIO_CHUNK──►  /api/recordings/{id}/chunk
-                     ──finalize─────►  /api/recordings/{id}/finalize
-                     ◄──poll─────────  /api/recordings/{id}/status
-                                           ↓
-                                       Gemini 1.5 Flash (transcription)
-                                       Gemini 1.5 Flash (analysis)
-                                       → commitments, actions, type
+# Check performance logs
+docker logs meetiq-api --tail 20
 ```
 
 ---
 
-## Reloading After Code Changes
+## 🧩 Step 2: Browser Extension (Frontend)
 
-**Backend:** Changes auto-reload (source is bind-mounted into Docker).
+The extension uses **Manifest V3** and handles audio capture through an **Offscreen Document** for security and stability.
 
-**Extension:** Go to `chrome://extensions` → click the **↺ refresh** icon on MeetIQ.
+### Installation
+1. Navigate to: `chrome://extensions`
+2. Enable **Developer mode** (Top Right).
+3. Click **Load unpacked**.
+4. Select the project `extension/` directory.
+
+### Initial Tuning
+1. Click the MeetIQ icon → **Settings**.
+2. Set **Server URL** to `http://localhost:8000`.
+3. Enter your **Speaker Name** (used to color chat bubbles in the dashboard).
 
 ---
 
-## Troubleshooting
+## 🚦 Testing the Intelligence Flow
 
-| Symptom | Fix |
-|---------|-----|
-| "No active tab found" | Make sure you're on a Google Meet / Teams / Whereby / Zoom tab |
-| "Backend error 422" | Check field names in request payload (see sw.js) |
-| Extension doesn't auto-detect type | Wait 2–6 seconds after tab loads; check console for `MEETING_TYPE_HINT` |
-| Docker build fails | Run `docker compose down -v` then `docker compose up --build` again |
-| SQLite locked | Stop and restart Docker: `docker compose restart` |
+A successful test run typically follows this sequence of events in the logs:
+
+1. **Start**: Popup sends meeting metadata.
+2. **Streaming**: Extension sends 10s base64 chunks to `/chunk`.
+3. **Transcription**: On `Stop`, backend runs windows of 20s through **Sarvam Saaras v3**.
+4. **Manual Analysis**: Open the dashboard, review the transcript, and click **✨ Run AI Brain**.
+
+---
+
+## 📂 Key Architecture Modules
+
+### `backend/services/transcription.py`
+Contains the **Smart Windowing** logic that splits audio into 20s segments to bypass provider limits while maintaining sub-second transcription latency.
+
+### `backend/services/ai_analysis.py`
+The "Master Brain" logic. It uses **Single-Pass Prompting** to extract summaries, follow-ups, and commitments in a single LLM call, reducing token costs by ~75%.
+
+### `extension/offscreen/recorder.js`
+The core audio engine. It uses the `tabCapture` and `navigator.mediaDevices` APIs to merge system audio and microphone into a single high-fidelity WebM stream.
+
+---
+
+## 🆘 Troubleshooting & Debugging
+
+| Problem | Root Cause | Fix |
+| :--- | :--- | :--- |
+| **Diarization Error** | Sarvam REST API failure. | Check `SARVAM_API_KEY` in `.env`. |
+| **Looping finalized** | Extension polling timeout. | Check `docker logs` for STT hanging. |
+| **No "Run Brain" button** | JSON Summarization was already attempted. | Delete the meeting and re-record. |
+| **Missing Segments** | STT returned a flat string. | Ensure `with_timestamps=true` is enabling word-level data. |
+
+---
+
+Developed for **MeetIQ** — Empowering meetings with localized AI.

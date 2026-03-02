@@ -174,30 +174,35 @@ async def _sarvam_transcribe(file_path: str) -> dict:
     loop = asyncio.get_event_loop()
 
     def _do_sarvam_transcribe():
-        from sarvamai import SarvamAI
-        # Check if key is leaked/invalid
+        import requests
         if not SARVAM_KEY or len(SARVAM_KEY) < 20:
              raise Exception("Invalid SARVAM_API_KEY. Please update .env")
              
-        client = SarvamAI(api_subscription_key=SARVAM_KEY)
+        # Switch to REST API for reliable parameter support (with_timestamps)
+        url = "https://api.sarvam.ai/speech-to-text"
+        files = {
+            'file': (os.path.basename(file_path), open(file_path, 'rb'), 'audio/webm')
+        }
+        data = {
+            'model': SARVAM_MODEL,
+            'mode': 'transcribe',
+            'with_timestamps': 'true' # 🚀 Official docs param
+        }
+        headers = {
+            'api-subscription-key': SARVAM_KEY
+        }
         
-        # sarvamai SDK uses 'speech_to_text' or similar. 
-        # According to logs, it raised BadRequestError.
         try:
-             with open(file_path, "rb") as f:
-                 response = client.speech_to_text.transcribe(
-                     file=f,
-                     model=SARVAM_MODEL,
-                     mode="transcribe",
-                     with_timestamps=True  # 🚀 Added from newest docs
-                 )
-             return response
+            response = requests.post(url, files=files, data=data, headers=headers)
+            if response.status_code != 200:
+                print(f"[Sarvam STT Error] {response.status_code}: {response.text}")
+                response.raise_for_status()
+            return response.json()
         except Exception as stt_err:
-             print(f"[Sarvam STT Error] {stt_err}")
-             # Re-raise with more detail if possible
-             if hasattr(stt_err, "response") and hasattr(stt_err.response, "text"):
-                 print(f"[Sarvam Detail] {stt_err.response.text}")
-             raise stt_err
+            print(f"[Sarvam STT EXCEPTION] {stt_err}")
+            raise stt_err
+        finally:
+            files['file'][1].close()
 
     res = await loop.run_in_executor(None, _do_sarvam_transcribe)
 
