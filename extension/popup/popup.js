@@ -121,7 +121,13 @@ function setupRecordButton() {
           meetingType: selectedPurpose
         };
 
-        const res = await chrome.runtime.sendMessage({ type: 'START_RECORDING', payload });
+        const res = await chrome.runtime.sendMessage({
+          type: 'START_RECORDING',
+          payload: {
+            ...payload,
+            meetingType: selectedPurpose || 'discovery'
+          }
+        });
         setButtonLoading(false);
 
         if (res.ok) {
@@ -337,7 +343,38 @@ async function prefillFromActiveTab() {
   } catch (e) { }
 }
 
-async function applyMeetingTypeHint() { /* Placeholder */ }
+async function applyMeetingTypeHint() {
+  try {
+    const data = await chrome.storage.session.get('meetingTypeHint');
+    const hint = data?.meetingTypeHint;
+    if (hint && (Date.now() - hint.ts < 600000)) { // 10 min window
+      const badge = document.getElementById('auto-detect-badge');
+      if (badge && !selectedPurpose) {
+        badge.textContent = `✨ Detected: ${hint.suggestedType}`;
+        badge.style.display = 'inline-block';
+        badge.onclick = () => {
+          selectPurpose(hint.suggestedType);
+          badge.style.display = 'none';
+        };
+      }
+    }
+  } catch (e) {
+    // Session storage fallback
+    const data = await chrome.storage.local.get('meetingTypeHint');
+    const hint = data?.meetingTypeHint;
+    if (hint && (Date.now() - hint.ts < 600000)) {
+      const badge = document.getElementById('auto-detect-badge');
+      if (badge && !selectedPurpose) {
+        badge.textContent = `✨ Detected: ${hint.suggestedType}`;
+        badge.style.display = 'inline-block';
+        badge.onclick = () => {
+          selectPurpose(hint.suggestedType);
+          badge.style.display = 'none';
+        };
+      }
+    }
+  }
+}
 
 function escHtml(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
