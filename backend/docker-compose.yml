@@ -1,0 +1,27 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meetiq-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # SQLite stored in a named volume — set DATABASE_URL to use Postgres instead
+      DATABASE_URL: "sqlite+aiosqlite:////data/meetiq.db"
+    volumes:
+      - meetiq_data:/data
+      # Hot-reload source in dev: mount the source over /app
+      - .:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  meetiq_data:
+    driver: local

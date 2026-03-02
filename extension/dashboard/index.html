@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeetIQ Dashboard — AI Meeting Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #030712;
+            --card: rgba(17, 24, 39, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --indigo: #6366f1;
+            --indigo-glow: rgba(99, 102, 241, 0.2);
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --green: #22c55e;
+            --red: #ef4444;
+            --yellow: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            background-image:
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 100% 100%, rgba(139, 92, 246, 0.1) 0%, transparent 40%);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* --- Navbar --- */
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px var(--indigo-glow);
+        }
+
+        /* --- Main Layout --- */
+        .grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+        }
+
+        .card {
+            background: var(--card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 32px;
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            font-size: 32px;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .meta {
+            color: var(--muted);
+            font-size: 14px;
+            margin-bottom: 24px;
+            display: flex;
+            gap: 16px;
+        }
+
+        /* --- Results --- */
+        h2 {
+            font-size: 18px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--muted);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .overview {
+            font-size: 18px;
+            color: var(--text);
+            margin-bottom: 32px;
+            line-height: 1.6;
+        }
+
+        .tag {
+            padding: 4px 12px;
+            border-radius: 100px;
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--indigo);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* --- Commitments & Actions --- */
+        .commitment-card {
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            border-left: 4px solid var(--indigo);
+        }
+
+        .commitment-card.high {
+            border-left-color: var(--red);
+        }
+
+        .commitment-card.medium {
+            border-left-color: var(--yellow);
+        }
+
+        .commit-text {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .commit-meta {
+            font-size: 12px;
+            color: var(--muted);
+            display: flex;
+            gap: 12px;
+        }
+
+        .action-item {
+            display: flex;
+            gap: 16px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+
+        .action-check {
+            color: var(--indigo);
+            font-size: 20px;
+        }
+
+        .action-content {
+            flex: 1;
+        }
+
+        .action-task {
+            font-weight: 600;
+        }
+
+        .action-owner {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        /* --- Transcript --- */
+        .transcript {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 15px;
+            color: var(--muted);
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 12px;
+        }
+
+        .transcript-segment {
+            margin-bottom: 16px;
+            display: flex;
+            gap: 16px;
+        }
+
+        .speaker {
+            font-weight: 600;
+            color: var(--indigo);
+            min-width: 100px;
+        }
+
+        .timestamp {
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            opacity: 0.5;
+            margin-left: auto;
+        }
+
+        /* --- Empty State --- */
+        .empty {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--muted);
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" id="dashboard-root">
+        <nav>
+            <div class="logo">
+                <div class="logo-icon">🧠</div>
+                <span>MeetIQ Dashboard</span>
+            </div>
+            <div class="nav-actions">
+                <!-- Dashboard actions -->
+            </div>
+        </nav>
+
+        <div id="content">
+            <div class="empty">
+                <div class="empty-icon">⏳</div>
+                <p>Loading your meeting analysis...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+
+</html>

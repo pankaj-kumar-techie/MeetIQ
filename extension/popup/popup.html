@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MeetIQ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #080c14;
+      --surface: #0e1420;
+      --surface2: #141c2e;
+      --border: rgba(99, 102, 241, 0.15);
+      --border2: rgba(255, 255, 255, 0.06);
+      --indigo: #6366f1;
+      --indigo2: #818cf8;
+      --red: #ef4444;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --muted2: #94a3b8;
+    }
+
+    body {
+      width: 380px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 520px;
+      /* Increased for a more consistent feel */
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--border2);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .logo-text {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      font-size: 14px;
+    }
+
+    .icon-btn:hover {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    /* ── Recording status bar ── */
+    .status-bar {
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--border2);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .status-dot.recording {
+      background: var(--red);
+      animation: blink 1.4s ease-in-out infinite;
+    }
+
+    .status-dot.ready {
+      background: var(--green);
+    }
+
+    .status-dot.processing {
+      background: var(--yellow);
+      animation: blink 1.4s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: 0.4
+      }
+    }
+
+    .status-text {
+      color: var(--muted2);
+      flex: 1;
+    }
+
+    .timer {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Main sections ── */
+    .section {
+      padding: 16px;
+      border-bottom: 1px solid var(--border2);
+    }
+
+    .section:last-child {
+      border-bottom: none;
+    }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    /* ── Form fields ── */
+    .field {
+      margin-bottom: 10px;
+    }
+
+    .field:last-child {
+      margin-bottom: 0;
+    }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted2);
+      margin-bottom: 5px;
+    }
+
+    .field input,
+    .field textarea,
+    .field select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.15s;
+      resize: none;
+    }
+
+    .field input:focus,
+    .field textarea:focus,
+    .field select:focus {
+      border-color: var(--indigo);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    }
+
+    .field input::placeholder,
+    .field textarea::placeholder {
+      color: var(--muted);
+    }
+
+    .field select {
+      cursor: pointer;
+    }
+
+    .field textarea {
+      min-height: 64px;
+      line-height: 1.5;
+    }
+
+    /* ── Purpose chips ── */
+    .purpose-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      padding: 4px 10px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      color: var(--muted2);
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+    }
+
+    .chip:hover {
+      border-color: var(--indigo);
+      color: var(--indigo2);
+    }
+
+    .chip.active {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: var(--indigo);
+      color: var(--indigo2);
+    }
+
+    /* ── Main action button ── */
+    .btn-record {
+      width: 100%;
+      padding: 11px;
+      border-radius: 10px;
+      border: none;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-record.start {
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: white;
+    }
+
+    .btn-record.start:hover {
+      background: linear-gradient(135deg, #4338ca, #6d28d9);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
+    }
+
+    .btn-record.stop {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
+    .btn-record.stop:hover {
+      background: rgba(239, 68, 68, 0.22);
+    }
+
+    .btn-record:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* ── Bottom nav ── */
+    .bottom-nav {
+      display: flex;
+      border-top: 1px solid var(--border2);
+    }
+
+    .nav-tab {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      transition: color 0.15s;
+      border-radius: 0;
+    }
+
+    .nav-tab:hover {
+      color: var(--text);
+      background: var(--surface2);
+    }
+
+    .nav-tab.active {
+      color: var(--indigo2);
+    }
+
+    .nav-tab .nav-icon {
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    /* ── Meetings list ── */
+    .meetings-list {
+      flex: 1;
+      /* Grow to fill space */
+      max-height: 420px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--surface2) transparent;
+    }
+
+    .meeting-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border2);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .meeting-item:last-child {
+      border-bottom: none;
+    }
+
+    .meeting-item:hover {
+      background: var(--surface2);
+    }
+
+    .meeting-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .meeting-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .meeting-name {
+      font-weight: 500;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .meeting-meta {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+
+    .meeting-badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 100px;
+      background: rgba(99, 102, 241, 0.12);
+      color: var(--indigo2);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .meeting-badge.done {
+      background: rgba(34, 197, 94, 0.1);
+      color: #86efac;
+    }
+
+    .meeting-badge.recording {
+      background: rgba(239, 68, 68, 0.1);
+      color: #fca5a5;
+    }
+
+    .meeting-badge.processing {
+      background: rgba(234, 179, 8, 0.1);
+      color: #fde68a;
+    }
+
+    .meeting-badge.error {
+      background: rgba(239, 68, 68, 0.08);
+      color: #f87171;
+    }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .empty-state .empty-icon {
+      font-size: 28px;
+      margin-bottom: 8px;
+      opacity: 0.5;
+    }
+
+    .meeting-commits {
+      font-size: 10px;
+      color: var(--yellow);
+      margin-top: 2px;
+      letter-spacing: 0.01em;
+    }
+
+    /* ── Auto-detect badge ── */
+    .auto-detect-badge {
+      display: none;
+      font-size: 10px;
+      color: var(--indigo2);
+      background: rgba(99, 102, 241, 0.10);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 100px;
+      padding: 2px 8px;
+      margin-top: 6px;
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Alert preview (Discord/Slack preview) ── */
+    .alert-preview {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 11px;
+      color: var(--muted2);
+      line-height: 1.6;
+    }
+
+    .alert-preview .channel {
+      color: var(--indigo2);
+      font-weight: 600;
+    }
+
+    /* ── Error/info banners ── */
+    .banner {
+      margin: 12px 16px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .banner.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+    }
+
+    .banner.info {
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      color: var(--indigo2);
+    }
+
+    .banner.warn {
+      background: rgba(234, 179, 8, 0.1);
+      border: 1px solid rgba(234, 179, 8, 0.2);
+      color: #fde68a;
+    }
+
+    /* ── View pages ── */
+    .page {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      animation: fadeIn 0.15s ease-out;
+    }
+
+    .page.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(2px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border2);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">🧠</div>
+      <span class="logo-text">MeetIQ</span>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="btn-dashboard" title="Open full dashboard">⊞</button>
+      <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <span class="status-text" id="status-text">Ready to record</span>
+    <span class="timer" id="timer" style="display:none">00:00</span>
+  </div>
+
+  <!-- Result Banner (shown after processing) -->
+  <div id="result-banner" class="banner info" style="display:none; cursor:pointer;">
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <span>✨ Analysis Complete! View results.</span>
+      <span style="font-size:14px;">➜</span>
+    </div>
+  </div>
+
+  <!-- Error banner -->
+  <div id="error-banner" class="banner error" style="display:none"></div>
+
+  <!-- ── PAGE: RECORD ── -->
+  <div class="page active" id="page-record">
+
+    <!-- Meeting Info -->
+    <div class="section">
+      <div class="section-label">Meeting Details</div>
+
+      <div class="field">
+        <label>Meeting Name</label>
+        <input type="text" id="meeting-name" placeholder="e.g. Client Discovery — Acme Corp" />
+      </div>
+
+      <div class="field">
+        <label>Attendees</label>
+        <input type="text" id="attendees" placeholder="e.g. John (client), Sarah (PM)" />
+      </div>
+    </div>
+
+    <!-- Agenda -->
+    <div class="section">
+      <div class="section-label">Agenda & Purpose</div>
+
+      <div class="field">
+        <label>Purpose</label>
+        <div class="purpose-chips" id="purpose-chips">
+          <div class="chip" data-val="Discovery call">Discovery</div>
+          <div class="chip" data-val="Sales demo">Sales Demo</div>
+          <div class="chip" data-val="Project kickoff">Kickoff</div>
+          <div class="chip" data-val="Status update">Status Update</div>
+          <div class="chip" data-val="Technical review">Tech Review</div>
+          <div class="chip" data-val="Interview">Interview</div>
+        </div>
+        <div class="auto-detect-badge" id="auto-detect-badge"></div>
+      </div>
+
+      <div class="field">
+        <label>Agenda / What to focus AI on</label>
+        <textarea id="agenda"
+          placeholder="e.g.&#10;• Understand their tech stack&#10;• Get budget range&#10;• Clarify timeline&#10;• Discuss integration needs"></textarea>
+      </div>
+    </div>
+
+    <!-- Record button -->
+    <div class="section">
+      <button class="btn-record start" id="btn-record">
+        <span id="btn-icon">⏺</span>
+        <span id="btn-label">Start Recording</span>
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ── PAGE: MEETINGS ── -->
+  <div class="page" id="page-meetings">
+    <div class="meetings-list" id="meetings-list">
+      <div class="empty-state">
+        <div class="empty-icon">🎙️</div>
+        <div>No meetings yet.<br>Start a recording to see them here.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: SETTINGS ── -->
+  <div class="page" id="page-settings">
+    <div class="section">
+      <div class="section-label">Identity</div>
+      <div class="field">
+        <label>Your name (used in transcript)</label>
+        <input type="text" id="setting-speaker" placeholder="Pankaj" />
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Backend</div>
+      <div class="field">
+        <label>API Endpoint</label>
+        <input type="text" id="setting-api" placeholder="http://localhost:8000" />
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Notifications</div>
+      <div class="field">
+        <label>Discord Webhook URL</label>
+        <input type="text" id="setting-discord" placeholder="https://discord.com/api/webhooks/..." />
+      </div>
+      <div class="field">
+        <label>Slack Webhook URL</label>
+        <input type="text" id="setting-slack" placeholder="https://hooks.slack.com/services/..." />
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Troubleshooting</div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn-record" id="btn-test-connection"
+          style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); color: #86efac; flex: 1;">
+          Test Connection
+        </button>
+        <button class="btn-record" id="btn-reset-state"
+          style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; flex: 1;">
+          Reset Extension
+        </button>
+      </div>
+    </div>
+
+    <div class="section">
+      <button class="btn-record start" id="btn-save-settings"
+        style="background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.3); color: #a5b4fc;">
+        Save Settings
+      </button>
+    </div>
+  </div>
+
+  <!-- Bottom nav -->
+  <div class="bottom-nav">
+    <button class="nav-tab active" data-page="record" id="nav-record">
+      <span class="nav-icon">⏺</span>
+      <span>Record</span>
+    </button>
+    <button class="nav-tab" data-page="meetings" id="nav-meetings">
+      <span class="nav-icon">📋</span>
+      <span>Meetings</span>
+    </button>
+    <button class="nav-tab" data-page="settings" id="nav-settings">
+      <span class="nav-icon">⚙</span>
+      <span>Settings</span>
+    </button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "MeetIQ — AI Meeting Intelligence",
+  "version": "1.0.0",
+  "description": "Record, transcribe and analyze meetings. Get AI insights, action items and alerts to Discord & Slack instantly.",
+  "permissions": [
+    "tabCapture",
+    "storage",
+    "alarms",
+    "notifications",
+    "offscreen",
+    "tabs",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://teams.microsoft.com/*",
+    "https://whereby.com/*",
+    "https://zoom.us/*",
+    "https://*.webex.com/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "background": {
+    "service_worker": "background/sw.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://teams.microsoft.com/*",
+        "https://whereby.com/*",
+        "https://zoom.us/*"
+      ],
+      "js": [
+        "content/detector.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  }
+}
