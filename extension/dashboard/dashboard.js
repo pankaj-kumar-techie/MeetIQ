@@ -44,7 +44,7 @@ async function renderMeeting(m) {
 
     if (!isAnalyzed) {
         navActions.innerHTML = `
-            <button id="btn-analyze" class="btn-analyze" onclick="runAnalysis()">
+            <button id="btn-analyze" class="btn-analyze" data-action="run-analysis">
                 <span class="icon">✨</span>
                 Run AI Brain
             </button>
@@ -177,10 +177,17 @@ async function renderChatBubbles(segments) {
     }).join('');
 }
 
+// 🚀 Use Event Delegation to avoid CSP issues with inline onclick
+document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-action="run-analysis"]')) {
+        runAnalysis();
+    }
+});
+
 // 🚀 Manual Analysis Trigger
 async function runAnalysis() {
     const btn = document.getElementById('btn-analyze');
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
 
     btn.disabled = true;
     btn.classList.add('loading');
@@ -224,6 +231,3 @@ async function runAnalysis() {
         btn.classList.remove('loading');
     }
 }
-
-// Bind to window for HTML onclick
-window.runAnalysis = runAnalysis;

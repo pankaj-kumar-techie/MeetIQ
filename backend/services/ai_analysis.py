@@ -140,16 +140,32 @@ def _parse_json(text: str) -> dict:
     text = text.strip()
     try:
         return json.loads(text)
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         # 3. Last ditch: try finding first { and last }
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1:
             try:
-                return json.loads(text[start:end+1])
+                candidate = text[start : end + 1]
+                return json.loads(candidate)
             except: pass
-        print(f"[Parser Error] Failed to parse JSON. Raw: {text[:200]}...")
-        raise e
+        
+        # 4. Final Fallback: The model gave us text instead of JSON. 
+        # Don't crash—wrap the text into a summary so the dashboard still works.
+        print(f"[Parser Recovery] Model failed JSON but returned text. Wrapping output.")
+        return {
+            "summary": {
+                "overview": text[:500] + "..." if len(text) > 500 else text,
+                "key_points": ["Review the conversation for details."],
+                "decisions": [],
+                "open_questions": [],
+                "sentiment": "neutral",
+                "meeting_type": "undetermined"
+            },
+            "action_items": [],
+            "commitments": [],
+            "follow_up_email": text
+        }
 
 
 # ── High-level analysis entry point ─────────────────────────────────────────
@@ -181,11 +197,10 @@ Analyze the transcript and return a single JSON object with these exact keys:
   "commitments": [
     {"text": "sentence", "speaker": "who", "type": "promise", "risk_level": "low|med|high"}
   ],
-  "action_items": [
-    {"task": "description", "owner": "name", "deadline": "date", "priority": "high|low"}
-  ],
   "follow_up_email": "A professional plain-text email ready to send."
-}"""
+}
+CRITICAL: Return ONLY the raw JSON object. Do not include markdown headers (#), do not include "Here is your summary", and do not include any preamble or postscript. Failure to return valid JSON will break the system.
+If the meeting was primarily in another language, produce all JSON values in English while respecting cultural nuances." """,
 
     user_context = (
         f"Context:\nPurpose: {purpose}\nAgenda: {agenda}\nType: {meeting_type}\n\n"

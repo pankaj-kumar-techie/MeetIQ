@@ -26,37 +26,54 @@ async def transcribe_chunks(chunks_b64: list[str]) -> dict:
         return {"full_text": "", "segments": []}
 
     if TRANSCRIPTION_PROVIDER.lower() == "sarvam":
-        # Strategy: Sarvam has a 30s limit. We group chunks (each ~10s) into windows of 2.
-        window_size = 2 
+        # 🛡️ Strategy: Join into one file first, then slice with ffmpeg
+        # Chrome WebM chunks are designed to be joined byte-by-byte to form one valid file.
+        full_webm_raw = b"".join(base64.b64decode(c) for c in chunks_b64)
+        
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
+            f.write(full_webm_raw)
+            main_path = f.name
+            
         all_text = []
         all_segments = []
         
-        print(f"[TIMING] Sarvam Windowed STT: Processing {len(chunks_b64)} chunks in windows of {window_size}...")
-        
-        for i in range(0, len(chunks_b64), window_size):
-            window = chunks_b64[i : i + window_size]
-            window_raw = b"".join(base64.b64decode(c) for c in window)
-            
-            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
-                f.write(window_raw)
-                tmp_path = f.name
-            
-            try:
-                print(f"[TIMING] Transcribing window {i//window_size + 1}...")
-                res = await _sarvam_transcribe(tmp_path)
-                all_text.append(res["full_text"])
-                # Offset segments by the window start time (approx 10s per chunk)
-                offset = i * 10 
-                for seg in res["segments"]:
-                    seg["start"] += offset
-                    seg["end"] += offset
-                    all_segments.append(seg)
-            finally:
-                try: os.unlink(tmp_path)
-                except: pass
+        # Calculate total duration for iteration (approx 10s per chunk)
+        num_windows = (len(chunks_b64) + 1) // 2
+        print(f"[TIMING] Sarvam FFmpeg Slicing: Extracting {num_windows} windows from {len(chunks_b64)} chunks...")
+
+        try:
+            for i in range(num_windows):
+                start_sec = i * 20
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f_wav:
+                    window_path = f_wav.name
+
+                try:
+                    # 🚀 Use FFmpeg for high-fidelity slicing
+                    import subprocess
+                    subprocess.run([
+                        "ffmpeg", "-y", "-i", main_path, 
+                        "-ss", str(start_sec), "-t", "20", 
+                        "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+                        window_path
+                    ], capture_output=True, check=True)
+
+                    print(f"[TIMING] Transcribing window {i+1} (starts at {start_sec}s)...")
+                    res = await _sarvam_transcribe(window_path)
+                    
+                    all_text.append(res["full_text"])
+                    for seg in res["segments"]:
+                        seg["start"] += start_sec
+                        seg["end"] += start_sec
+                        all_segments.append(seg)
+                except Exception as slice_err:
+                    print(f"[FFmpeg Slicing Error] window {i+1}: {slice_err}")
+                finally:
+                    if os.path.exists(window_path): os.unlink(window_path)
+        finally:
+            if os.path.exists(main_path): os.unlink(main_path)
         
         return {
-            "full_text": " ".join(all_text),
+            "full_text": " ".join(all_text).strip(),
             "segments": all_segments
         }
 
@@ -180,8 +197,12 @@ async def _sarvam_transcribe(file_path: str) -> dict:
              
         # Switch to REST API for reliable parameter support (with_timestamps)
         url = "https://api.sarvam.ai/speech-to-text"
+        
+        # Determine mime type
+        mime = "audio/wav" if file_path.endswith(".wav") else "audio/webm"
+        
         files = {
-            'file': (os.path.basename(file_path), open(file_path, 'rb'), 'audio/webm')
+            'file': (os.path.basename(file_path), open(file_path, 'rb'), mime)
         }
         data = {
             'model': SARVAM_MODEL,
@@ -206,36 +227,63 @@ async def _sarvam_transcribe(file_path: str) -> dict:
 
     res = await loop.run_in_executor(None, _do_sarvam_transcribe)
 
-    # 🚀 Professional Parsing for Saaras v3 results
+    def _safe_float(v):
+        """Handle cases where Sarvam returns timestamps as numbers, strings, or lists."""
+        if isinstance(v, list): return float(v[0]) if v else 0.0
+        try: return float(v) if v is not None else 0.0
+        except: return 0.0
+
+    # 🚀 Extremely Robust Parsing for Saaras v3 / v2.5 results
     full_text = ""
     segments = []
     
-    # Extract transcript string safely
     if isinstance(res, dict):
         full_text = res.get("transcript", "")
-        # Extract word-level segments
         ts_data = res.get("timestamps")
+        
+        # 1. Attempt word-level segmenting (preferred for Chat UI)
         if ts_data and isinstance(ts_data, dict):
             words = ts_data.get("words", [])
-            # Group words into logical segments (~12 words each) for cleaner Chat UI
-            for i in range(0, len(words), 12):
-                chunk = words[i : i + 12]
-                if chunk:
-                    txt = " ".join([w.get("word", "") for w in chunk])
-                    start = float(chunk[0].get("start_time_seconds") or 0)
-                    end = float(chunk[-1].get("end_time_seconds") or 0)
+            # Group words into logical segments based on sentence endings or fixed blocks
+            current_segment = []
+            for idx, w in enumerate(words):
+                if isinstance(w, dict):
+                    txt = w.get("word", "").strip()
+                    current_segment.append(w)
+                    # Break segment on sentence delimiters or if it gets too long
+                    if txt.endswith((".", "?", "!")) or len(current_segment) >= 20:
+                        batch_txt = [win.get("word", "") for win in current_segment]
+                        start = _safe_float(current_segment[0].get("start_time_seconds"))
+                        end = _safe_float(current_segment[-1].get("end_time_seconds"))
+                        segments.append({
+                            "start": start,
+                            "end": end,
+                            "text": " ".join(batch_txt),
+                            "speaker": "Participant"
+                        })
+                        current_segment = []
+                else:
+                    # Strings fallback
                     segments.append({
-                        "start": start,
-                        "end": end,
-                        "text": txt,
-                        "speaker": "Speaker 1"
+                        "start": _safe_float(ts_data.get("start_time_seconds")),
+                        "end": _safe_float(ts_data.get("end_time_seconds")),
+                        "text": str(w),
+                        "speaker": "Participant"
                     })
+
+            # Catch remaining words
+            if current_segment:
+                batch_txt = [win.get("word", "") for win in current_segment]
+                start = _safe_float(current_segment[0].get("start_time_seconds"))
+                end = _safe_float(current_segment[-1].get("end_time_seconds"))
+                segments.append({
+                    "start": start,
+                    "end": end,
+                    "text": " ".join(batch_txt),
+                    "speaker": "Participant"
+                })
     elif hasattr(res, "transcript"):
         full_text = res.transcript
-        # Try to handle object-style timestamps if any
-        if hasattr(res, "timestamps") and res.timestamps:
-            # same logic for objects...
-            pass
 
     # Safety: fallback if no segments were parsed
     if not segments:

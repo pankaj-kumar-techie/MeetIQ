@@ -7,7 +7,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
- && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -21,9 +21,9 @@ WORKDIR /app
 COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=deps /usr/local/bin /usr/local/bin
 
-# libpq runtime only (for asyncpg) + curl for healthchecks
-RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl \
- && rm -rf /var/lib/apt/lists/*
+# libpq runtime only (for asyncpg) + curl for healthchecks + ffmpeg for audio processing
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy application source
 COPY . .
